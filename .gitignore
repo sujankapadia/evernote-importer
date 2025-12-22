@@ -1,0 +1,5 @@
+.venv/
+evernote.db
+*.enex
+__pycache__/
+*.pyc

@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Evernote Local Viewer</title>
+  <link rel="stylesheet" href="https://unpkg.com/@picocss/pico@2.0.6/css/pico.min.css" />
+  <style>
+    :root {
+      --brand: #00a82d;
+      --brand-dark: #008f26;
+      --ink: #0f172a;
+      --muted: #6b7280;
+      --bg: #f6f8fb;
+    }
+    body {
+      background: radial-gradient(circle at 10% 20%, #f4fbf6, #eef5ff 35%, #f5f7fb 80%);
+      color: var(--ink);
+      font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+    header.hero {
+      padding: 2rem 0 1rem 0;
+    }
+    .header-row {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .subhead {
+      margin: 0;
+      color: var(--muted);
+      max-width: 640px;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-weight: 700;
+      color: var(--brand-dark);
+      letter-spacing: 0.2px;
+    }
+    .brand .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--brand);
+      box-shadow: 0 0 0 6px rgba(0, 168, 45, 0.15);
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 240px 1fr 1.6fr;
+      gap: 1rem;
+      align-items: start;
+      transition: grid-template-columns 0.2s ease;
+    }
+    body.nav-collapsed .layout {
+      grid-template-columns: 48px 1fr 1.6fr;
+    }
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 200px 1fr; }
+      body.nav-collapsed .layout { grid-template-columns: 48px 1fr; }
+    }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      body.nav-collapsed .layout { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: white;
+      border-radius: 0.9rem;
+      border: 1px solid #e4e7ed;
+      box-shadow: 0 12px 36px rgba(15, 23, 42, 0.08);
+      padding: 1.2rem;
+    }
+    .note-list { max-height: 70vh; overflow-y: auto; }
+    .note-item {
+      cursor: pointer;
+      padding: 0.75rem 0.85rem;
+      border-radius: 0.7rem;
+      border: 1px solid transparent;
+      transition: all 0.14s ease;
+      background: linear-gradient(120deg, rgba(0, 168, 45, 0.04), rgba(0, 168, 45, 0));
+    }
+    .note-item:hover {
+      border-color: rgba(0, 168, 45, 0.25);
+      background: linear-gradient(120deg, rgba(0, 168, 45, 0.08), rgba(0, 168, 45, 0.02));
+      transform: translateY(-1px);
+    }
+    .note-item.active {
+      border-color: var(--brand);
+      box-shadow: 0 8px 24px rgba(0, 168, 45, 0.18);
+      background: linear-gradient(120deg, rgba(0, 168, 45, 0.14), rgba(0, 168, 45, 0.05));
+    }
+    .note-meta {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      margin-top: 0.3rem;
+    }
+    .tag {
+      background: #e8f9ee;
+      color: var(--brand-dark);
+      padding: 0.2rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      border: 1px solid rgba(0, 168, 45, 0.25);
+    }
+    #status {
+      min-height: 1.2rem;
+      font-weight: 600;
+    }
+    #status.success { color: var(--brand-dark); }
+    #status.error { color: #b91c1c; }
+    #status.info { color: var(--muted); }
+    #note-html {
+      border: 1px solid #e4e7ed;
+      border-radius: 0.65rem;
+      padding: 0.9rem;
+      background: #fff;
+      min-height: 200px;
+    }
+    .toolbar {
+      display: flex;
+      gap: 0.6rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.4rem 0.7rem;
+      background: #f3f4f6;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      color: #374151;
+    }
+    .btn-primary {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: #fff;
+      box-shadow: 0 10px 20px rgba(0, 168, 45, 0.25);
+    }
+    .btn-primary:hover { background: var(--brand-dark); border-color: var(--brand-dark); }
+    .btn-ghost {
+      border: 1px solid #d7dce7;
+      color: var(--muted);
+      background: #fff;
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0,0,0,0);
+      white-space: nowrap;
+      border: 0;
+    }
+    .filter-bar {
+      display: none;
+    }
+    .nav-card {
+      background: white;
+      border-radius: 0.9rem;
+      border: 1px solid #e4e7ed;
+      padding: 0.75rem;
+      box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+      position: relative;
+      height: calc(100vh - 3rem);
+      transition: width 0.2s ease, padding 0.2s ease;
+      min-width: 48px;
+    }
+    body.nav-collapsed .nav-card {
+      width: 48px;
+      padding: 0.4rem;
+      overflow: hidden;
+    }
+    .nav-section { margin-bottom: 0.8rem; }
+    .nav-import { margin-top: auto; }
+    .nav-section h4 {
+      margin: 0 0 0.4rem 0;
+      font-size: 0.95rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      transition: opacity 0.15s ease;
+    }
+    body.nav-collapsed .nav-section {
+      display: none;
+    }
+    .nav-list { list-style: none; padding: 0; margin: 0; }
+    .nav-list li { margin-bottom: 0.25rem; }
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.45rem 0.6rem;
+      border-radius: 0.6rem;
+      border: 1px solid transparent;
+      color: var(--ink);
+      cursor: pointer;
+      transition: all 0.12s ease;
+      white-space: nowrap;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .nav-link:hover { background: #f5f7fa; border-color: #e4e7ed; }
+    .nav-link.active {
+      border-color: var(--brand);
+      background: #e8f9ee;
+      color: var(--brand-dark);
+      box-shadow: 0 4px 12px rgba(0, 168, 45, 0.12);
+    }
+    .nav-icon {
+      width: 20px;
+      text-align: center;
+      color: var(--muted);
+    }
+    .nav-label {
+      transition: opacity 0.15s ease, width 0.15s ease;
+    }
+    body.nav-collapsed .nav-label {
+      opacity: 0;
+      width: 0;
+      overflow: hidden;
+    }
+    body.nav-collapsed .hide-when-collapsed {
+      display: none;
+    }
+    .nav-handle {
+      position: sticky;
+      top: 0.5rem;
+      display: flex;
+      justify-content: center;
+      margin-bottom: 0.6rem;
+      background: white;
+      padding-bottom: 0.4rem;
+      z-index: 2;
+    }
+    .nav-toggle-btn {
+      width: 100%;
+      min-width: 30px;
+      padding: 0.35rem;
+      border: 1px solid #d7dce7;
+      border-radius: 0.6rem;
+      background: #fff;
+      color: var(--muted);
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .nav-toggle-btn:hover { background: #f5f7fa; }
+    .toast-container {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      z-index: 9999;
+    }
+    .toast {
+      background: #fff;
+      border: 1px solid #e4e7ed;
+      border-radius: 0.75rem;
+      padding: 0.75rem 0.9rem;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-width: 280px;
+      max-width: 360px;
+      gap: 0.75rem;
+    }
+    .toast.success { border-color: rgba(0,168,45,0.3); }
+    .toast.error { border-color: rgba(185,28,28,0.3); }
+    .toast .close-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.4rem 0.7rem;
+      border-radius: 999px;
+      border: 1px solid #d7dce7;
+      background: #f8fafb;
+      color: var(--ink);
+      cursor: pointer;
+      transition: all 0.12s ease;
+      font-size: 0.9rem;
+    }
+    .chip.active {
+      border-color: var(--brand);
+      background: #e8f9ee;
+      color: var(--brand-dark);
+      box-shadow: 0 4px 12px rgba(0, 168, 45, 0.12);
+    }
+    .select {
+      border-radius: 0.7rem;
+      border: 1px solid #d7dce7;
+      padding: 0.35rem 0.6rem;
+      background: #fff;
+      color: var(--ink);
+    }
+    .attachments ul { margin: 0.5rem 0 0 0; }
+    .attachments li { margin: 0.25rem 0; }
+    #detail {
+      max-height: 80vh;
+      overflow-y: auto;
+      position: sticky;
+      top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <header class="container hero header-row">
+    <h1 class="brand"><span class="dot"></span>Evernote Local Viewer</h1>
+    <p class="subhead">Import your ENEX exports, keep notes local, and browse them with fast, private storage.</p>
+  </header>
+
+  <main class="container">
+    <div class="layout">
+      <aside class="nav-card">
+        <div class="nav-handle">
+          <button id="nav-toggle" class="nav-toggle-btn" title="Toggle sidebar">⇔</button>
+        </div>
+        <div class="toolbar hide-when-collapsed" style="justify-content: space-between; gap: 0.3rem;">
+          <strong style="font-size: 1rem;">Filters</strong>
+        </div>
+        <div class="nav-section hide-when-collapsed">
+          <h4>Search</h4>
+          <input type="search" id="nav-search" placeholder="Search (coming soon)" disabled />
+        </div>
+        <div class="nav-section hide-when-collapsed">
+          <h4>Views</h4>
+          <ul class="nav-list">
+            <li><div class="nav-link active" data-filter="all"><span class="nav-icon">📄</span><span class="nav-label">All notes</span></div></li>
+            <li><div class="nav-link" data-filter="attachments"><span class="nav-icon">📎</span><span class="nav-label">Attachments</span></div></li>
+          </ul>
+        </div>
+        <div class="nav-section hide-when-collapsed">
+          <h4>Sources</h4>
+          <select id="source-select" class="select" style="width:100%;">
+            <option value="">All sources</option>
+          </select>
+        </div>
+        <div class="nav-section nav-import hide-when-collapsed">
+          <h4>Import</h4>
+          <input id="file-input" type="file" accept=".enex" multiple style="display:none" />
+          <button id="import-btn" class="btn-primary" style="width:100%;">Import ENEX</button>
+          <div id="status" class="sr-only" aria-live="polite" style="margin-top:0.4rem;"></div>
+        </div>
+      </aside>
+
+      <section class="card">
+        <div class="toolbar" style="justify-content: space-between;">
+          <h3 style="margin:0;">Notes</h3>
+          <span id="note-count" class="pill">0 notes</span>
+        </div>
+        <div class="note-list" id="note-list"></div>
+      </section>
+      <section id="detail" class="card">
+        <h3 id="note-title">Select a note</h3>
+        <p id="note-meta" class="note-meta"></p>
+        <div id="note-html"></div>
+        <div id="attachments" class="attachments"></div>
+      </section>
+    </div>
+  </main>
+
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <script>
+    const noteListEl = document.getElementById('note-list');
+    const statusEl = document.getElementById('status');
+    const fileInput = document.getElementById('file-input');
+    const noteTitleEl = document.getElementById('note-title');
+    const noteMetaEl = document.getElementById('note-meta');
+    const noteHtmlEl = document.getElementById('note-html');
+    const attachmentsEl = document.getElementById('attachments');
+    const noteCountEl = document.getElementById('note-count');
+    const importBtn = document.getElementById('import-btn');
+    const filterAllLink = document.querySelector('[data-filter="all"]');
+    const filterAttachmentsLink = document.querySelector('[data-filter="attachments"]');
+    const sourceSelect = document.getElementById('source-select');
+    const navToggle = document.getElementById('nav-toggle');
+    let currentNoteId = null;
+    let currentFilter = 'all';
+    let currentSource = null;
+    let allNotes = [];
+
+    importBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async (e) => {
+      const files = e.target.files;
+      if (!files.length) return;
+      setStatus('Importing…', 'info');
+      try {
+        const form = new FormData();
+        for (const f of files) {
+          form.append('files', f);
+        }
+        const res = await fetch('/api/import/upload', {
+          method: 'POST',
+          body: form,
+        });
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(errText || 'Import failed');
+        }
+        const data = await res.json();
+        const messages = data.imports.map(r => `${r.original_name}: +${r.inserted}/~${r.updated} (${r.duration_ms}ms)`);
+        setStatus(messages.join(' | '), 'success');
+        await loadNotes();
+      } catch (err) {
+        console.error(err);
+        setStatus('Import failed', 'error');
+      } finally {
+        fileInput.value = '';
+      }
+    });
+
+    async function loadNotes() {
+      noteListEl.innerHTML = 'Loading…';
+      const res = await fetch('/api/notes');
+      if (!res.ok) {
+        noteListEl.innerHTML = 'Failed to load notes';
+        setStatus('Failed to load notes', 'error');
+        return;
+      }
+      const data = await res.json();
+      allNotes = data.notes || [];
+      renderFilters(allNotes);
+      renderNoteList(applyFilters());
+    }
+
+    function renderNoteList(notes) {
+      noteListEl.innerHTML = '';
+      noteCountEl.textContent = `${notes.length} note${notes.length === 1 ? '' : 's'}`;
+      if (!notes.length) {
+        noteListEl.innerHTML = '<p>No notes found. Import an ENEX file.</p>';
+        return;
+      }
+      for (const note of notes) {
+        const item = document.createElement('article');
+        item.className = 'note-item';
+        item.dataset.id = note.id;
+        item.innerHTML = `
+          <strong>${escapeHtml(note.title || '(untitled)')}</strong>
+          <div class="note-meta">${formatDate(note.created_at)} ${note.source_file ? '• ' + escapeHtml(note.source_file) : ''}</div>
+        `;
+        item.addEventListener('click', () => {
+          selectNote(item, note.id);
+        });
+        noteListEl.appendChild(item);
+      }
+    }
+
+    function renderFilters(notes) {
+      const sources = new Set();
+      notes.forEach(n => { if (n.source_file) sources.add(n.source_file); });
+      sourceSelect.innerHTML = '<option value="">All sources</option>';
+      sources.forEach(src => {
+        const opt = document.createElement('option');
+        opt.value = src;
+        opt.textContent = src;
+        sourceSelect.appendChild(opt);
+      });
+      updateFilterActive();
+      sourceSelect.value = currentSource || '';
+      filterAllLink.onclick = () => {
+        currentFilter = 'all';
+        currentSource = null;
+        updateFilterActive();
+        renderNoteList(applyFilters());
+      };
+      filterAttachmentsLink.onclick = () => {
+        currentFilter = 'attachments';
+        currentSource = null;
+        updateFilterActive();
+        renderNoteList(applyFilters());
+      };
+      sourceSelect.onchange = (e) => {
+        currentSource = e.target.value || null;
+        currentFilter = 'all';
+        updateFilterActive();
+        renderNoteList(applyFilters());
+      };
+    }
+
+    function updateFilterActive() {
+      document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+      if (currentFilter === 'attachments') {
+        filterAttachmentsLink.classList.add('active');
+      } else {
+        filterAllLink.classList.add('active');
+      }
+    }
+
+    function applyFilters() {
+      return allNotes.filter(n => {
+        if (currentSource) return n.source_file === currentSource;
+        if (currentFilter === 'attachments') return (n.resource_count || 0) > 0;
+        return true;
+      });
+    }
+
+    function clearActive() {
+      document.querySelectorAll('.note-item').forEach(el => el.classList.remove('active'));
+    }
+
+    async function selectNote(element, noteId) {
+      clearActive();
+      element.classList.add('active');
+      currentNoteId = noteId;
+      noteTitleEl.textContent = 'Loading…';
+      noteMetaEl.textContent = '';
+      noteHtmlEl.innerHTML = '';
+      attachmentsEl.innerHTML = '';
+
+      const res = await fetch(`/api/notes/${noteId}`);
+      if (!res.ok) {
+        noteTitleEl.textContent = 'Failed to load note';
+        return;
+      }
+      const note = await res.json();
+      noteTitleEl.textContent = note.title || '(untitled)';
+      noteMetaEl.textContent = `Created ${formatDate(note.created_at)} • Updated ${formatDate(note.updated_at)} • Source ${note.source_file || ''}`;
+      noteHtmlEl.innerHTML = note.html || '<p>(no content)</p>';
+      if (note.tags && note.tags.length) {
+        const tagDiv = document.createElement('div');
+        tagDiv.className = 'tags';
+        note.tags.forEach(t => {
+          const span = document.createElement('span');
+          span.className = 'tag';
+          span.textContent = t;
+          tagDiv.appendChild(span);
+        });
+        noteHtmlEl.prepend(tagDiv);
+      }
+
+      if (note.resources && note.resources.length) {
+        const list = document.createElement('ul');
+        list.innerHTML = '<h4>Attachments</h4>';
+        for (const resItem of note.resources) {
+          const li = document.createElement('li');
+          const link = document.createElement('a');
+          link.href = `/api/notes/${noteId}/attachments/${resItem.id}`;
+          link.textContent = resItem.filename || `attachment-${resItem.id}`;
+          link.target = '_blank';
+          li.appendChild(link);
+          list.appendChild(li);
+        }
+        attachmentsEl.innerHTML = '';
+        attachmentsEl.appendChild(list);
+      } else {
+        attachmentsEl.innerHTML = '';
+      }
+    }
+
+    function setStatus(msg, kind = 'info') {
+      statusEl.textContent = msg || '';
+      showToast(msg, kind);
+      if (kind === 'success') playChime();
+    }
+
+    navToggle.addEventListener('click', () => {
+      document.body.classList.toggle('nav-collapsed');
+    });
+
+    function showToast(message, kind = 'info') {
+      if (!message) return;
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast ${kind === 'error' ? 'error' : kind === 'success' ? 'success' : ''}`;
+      const text = document.createElement('div');
+      text.textContent = message;
+      const btn = document.createElement('button');
+      btn.className = 'close-btn';
+      btn.innerHTML = '&times;';
+      btn.onclick = () => container.removeChild(toast);
+      toast.appendChild(text);
+      toast.appendChild(btn);
+      container.appendChild(toast);
+      setTimeout(() => {
+        if (toast.parentElement === container) {
+          container.removeChild(toast);
+        }
+      }, 4500);
+    }
+
+    function playChime() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.3);
+      } catch (e) {
+        console.warn('Audio not available', e);
+      }
+    }
+
+    function formatDate(ts) {
+      if (!ts) return '';
+      const d = new Date(ts * 1000);
+      return d.toLocaleDateString();
+    }
+
+    function escapeHtml(str) {
+      return (str || '').replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      }[c]));
+    }
+
+    // initial load
+    loadNotes();
+  </script>
+</body>
+</html>
