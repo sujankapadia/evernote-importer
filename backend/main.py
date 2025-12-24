@@ -63,7 +63,7 @@ def list_notes(limit: int = 0, offset: int = 0) -> dict:
             """
             SELECT id, guid, title, created_at, updated_at, tags_json, source_file, resource_count
             FROM notes
-            ORDER BY created_at DESC, id DESC
+            ORDER BY COALESCE(updated_at, created_at) DESC, id DESC
             LIMIT ? OFFSET ?
             """,
             (limit, offset),
@@ -73,7 +73,7 @@ def list_notes(limit: int = 0, offset: int = 0) -> dict:
             """
             SELECT id, guid, title, created_at, updated_at, tags_json, source_file, resource_count
             FROM notes
-            ORDER BY created_at DESC, id DESC
+            ORDER BY COALESCE(updated_at, created_at) DESC, id DESC
             """
         )
     rows = cur.fetchall()
