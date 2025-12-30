@@ -217,6 +217,20 @@
       color: var(--brand-dark);
       box-shadow: 0 4px 12px rgba(0, 168, 45, 0.12);
     }
+    #nav-search {
+      width: 100%;
+      padding: 0.45rem 0.6rem;
+      border: 1px solid #d7dce7;
+      border-radius: 0.6rem;
+      background: #fff;
+      color: var(--ink);
+      box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    #nav-search:focus {
+      outline: none;
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(0, 168, 45, 0.2);
+    }
     .nav-icon {
       width: 20px;
       text-align: center;
@@ -340,7 +354,7 @@
         </div>
         <div class="nav-section hide-when-collapsed">
           <h4>Search</h4>
-          <input type="search" id="nav-search" placeholder="Search (coming soon)" disabled />
+          <input type="search" id="nav-search" placeholder="Search title or text" />
         </div>
         <div class="nav-section hide-when-collapsed">
           <h4>Views</h4>
@@ -395,10 +409,14 @@
     const filterAttachmentsLink = document.querySelector('[data-filter="attachments"]');
     const sourceSelect = document.getElementById('source-select');
     const navToggle = document.getElementById('nav-toggle');
+    const navSearch = document.getElementById('nav-search');
     let currentNoteId = null;
     let currentFilter = 'all';
     let currentSource = null;
     let allNotes = [];
+    let searchResults = null;
+    let searchQuery = '';
+    let searchDebounce = null;
 
     importBtn.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', async (e) => {
@@ -440,6 +458,9 @@
       }
       const data = await res.json();
       allNotes = data.notes || [];
+      searchResults = null;
+      searchQuery = '';
+      navSearch.value = '';
       renderFilters(allNotes);
       renderNoteList(applyFilters());
     }
@@ -448,16 +469,18 @@
       noteListEl.innerHTML = '';
       noteCountEl.textContent = `${notes.length} note${notes.length === 1 ? '' : 's'}`;
       if (!notes.length) {
-        noteListEl.innerHTML = '<p>No notes found. Import an ENEX file.</p>';
+        noteListEl.innerHTML = '<p>No notes found. Import an ENEX file or adjust your search.</p>';
         return;
       }
       for (const note of notes) {
         const item = document.createElement('article');
         item.className = 'note-item';
         item.dataset.id = note.id;
+        const dateLabel = formatDate(note.updated_at || note.created_at);
+        const datePrefix = note.updated_at ? 'Updated' : 'Created';
         item.innerHTML = `
           <strong>${escapeHtml(note.title || '(untitled)')}</strong>
-          <div class="note-meta">${formatDate(note.created_at)} ${note.source_file ? '• ' + escapeHtml(note.source_file) : ''}</div>
+          <div class="note-meta">${datePrefix} ${dateLabel} ${note.source_file ? '• ' + escapeHtml(note.source_file) : ''}</div>
         `;
         item.addEventListener('click', () => {
           selectNote(item, note.id);
@@ -508,7 +531,8 @@
     }
 
     function applyFilters() {
-      return allNotes.filter(n => {
+      const base = searchQuery ? (searchResults || []) : allNotes;
+      return base.filter(n => {
         if (currentSource) return n.source_file === currentSource;
         if (currentFilter === 'attachments') return (n.resource_count || 0) > 0;
         return true;
@@ -577,6 +601,49 @@
     navToggle.addEventListener('click', () => {
       document.body.classList.toggle('nav-collapsed');
     });
+
+    navSearch.addEventListener('input', (e) => {
+      const value = e.target.value || '';
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => {
+        handleSearch(value);
+      }, 250);
+    });
+
+    navSearch.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        navSearch.value = '';
+        handleSearch('');
+      }
+    });
+
+    async function handleSearch(value) {
+      const query = (value || '').trim();
+      searchQuery = query;
+      if (!query) {
+        searchResults = null;
+        renderFilters(allNotes);
+        renderNoteList(applyFilters());
+        return;
+      }
+      noteListEl.innerHTML = 'Searching…';
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        if (!res.ok) {
+          const msg = await res.text();
+          throw new Error(msg || 'Search failed');
+        }
+        const data = await res.json();
+        searchResults = data.notes || [];
+        renderFilters(searchResults);
+        renderNoteList(applyFilters());
+      } catch (err) {
+        console.error(err);
+        setStatus('Search failed. Try a simpler query.', 'error');
+        searchResults = [];
+        renderNoteList([]);
+      }
+    }
 
     function showToast(message, kind = 'info') {
       if (!message) return;

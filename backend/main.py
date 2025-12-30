@@ -1,4 +1,5 @@
 from typing import List, Optional
+import sqlite3
 from tempfile import NamedTemporaryFile
 from pathlib import Path
 import json
@@ -78,21 +79,48 @@ def list_notes(limit: int = 0, offset: int = 0) -> dict:
         )
     rows = cur.fetchall()
     conn.close()
-    notes = []
-    for row in rows:
-        notes.append(
-            {
-                "id": row["id"],
-                "guid": row["guid"],
-                "title": row["title"],
-                "created_at": row["created_at"],
-                "updated_at": row["updated_at"],
-                "tags": json_load(row["tags_json"]),
-                "source_file": row["source_file"],
-                "resource_count": row["resource_count"],
-            }
-        )
-    return {"notes": notes}
+    return {"notes": [note_from_row(row) for row in rows]}
+
+
+@app.get("/api/search")
+def search_notes(q: str, limit: int = 50, offset: int = 0) -> dict:
+    query = (q or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    conn = db.get_connection()
+    cur = conn.cursor()
+    try:
+        if limit and limit > 0:
+            cur.execute(
+                """
+                SELECT n.id, n.guid, n.title, n.created_at, n.updated_at, n.tags_json, n.source_file, n.resource_count
+                FROM notes_fts
+                JOIN notes n ON n.id = notes_fts.rowid
+                WHERE notes_fts MATCH ?
+                ORDER BY COALESCE(n.updated_at, n.created_at) DESC, n.id DESC
+                LIMIT ? OFFSET ?
+                """,
+                (query, limit, offset),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT n.id, n.guid, n.title, n.created_at, n.updated_at, n.tags_json, n.source_file, n.resource_count
+                FROM notes_fts
+                JOIN notes n ON n.id = notes_fts.rowid
+                WHERE notes_fts MATCH ?
+                ORDER BY COALESCE(n.updated_at, n.created_at) DESC, n.id DESC
+                """,
+                (query,),
+            )
+    except sqlite3.OperationalError:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Invalid search query")
+
+    rows = cur.fetchall()
+    conn.close()
+    return {"notes": [note_from_row(row) for row in rows]}
 
 
 @app.get("/api/notes/{note_id}")
@@ -185,6 +213,19 @@ def json_load(raw: Optional[str]) -> list:
         return json.loads(raw)
     except Exception:
         return []
+
+
+def note_from_row(row) -> dict:
+    return {
+        "id": row["id"],
+        "guid": row["guid"],
+        "title": row["title"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "tags": json_load(row["tags_json"]),
+        "source_file": row["source_file"],
+        "resource_count": row["resource_count"],
+    }
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
